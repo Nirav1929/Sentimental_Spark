@@ -27,107 +27,71 @@ def main():
 
 def make_plot(counts):
     """
-    This function plots the counts of positive and negative words for each timestep.
+    This function plots the counts of positive and negative words for each timeSeriesstep.
     """
-    positiveCounts = []
-    negativeCounts = []
-    time = []
+    positive = []
+    negative = []
+    timeSeries = []
 
     for val in counts:
-        positiveTuple = val[0]
-        positiveCounts.append(positiveTuple[1])
-        negativeTuple = val[1]
-        negativeCounts.append(negativeTuple[1])
+        key1 = val[0]
+        positive.append(key1[1])
+        key2 = val[1]
+        negative.append(key2[1])
 
     for i in range(len(counts)):
-        time.append(i)
+        timeSeries.append(i)
 
-    posLine = plt.plot(time, positiveCounts,'bo-', label='Positive')
-    negLine = plt.plot(time, negativeCounts,'go-', label='Negative')
-    plt.axis([0, len(counts), 0, max(max(positiveCounts), max(negativeCounts))+50])
-    plt.xlabel('Time step')
-    plt.ylabel('Word count')
-    plt.legend(loc = 'upper left')
+    line1 = plt.plot(timeSeries, positive,"gD-", linewidth=5 , label='Positive')
+    line2 = plt.plot(timeSeries, negative,'rD-', linewidth=5,  label='Negative')
+    #plt.axis([0, len(counts), 0, max(max(positive), max(negative))+50])
+    plt.xlabel('Time')
+    plt.ylabel('Count')
     plt.show()
-    plt.savefig('graph.png')
+    plt.savefig('plot.png')
 
 def load_wordlist(filename):
     """ 
     This function should return a list or set of words from the given filename.
     """
-    word_list = []
+    wordList = []
     with open(filename, 'r') as f:
         for line in f.readline():
-            word_list.append(line.strip())
+            wordList.append(line.strip())
+    return wordList
 
-    return word_list
 
-
-def updateFunction(newValues, runningCount):
+def getRunningCount(newValues, runningCount):
     if runningCount is None:
        runningCount = 0
     return sum(newValues, runningCount) 
-
-def stream1(ssc, pwords, nwords, duration):
-    kstream = KafkaUtils.createDirectStream(
-        ssc, topics=['twitterstream'], kafkaParams={"metadata.broker.list": 'localhost:9092'})
-    tweets = kstream.map(lambda x: x[1])
-    print(tweets, type(tweets))
-    counts = []
-    ssc.start()
-
-    pos_tweets, neg_tweets = 0, 0
-    for tweet in tweets:
-        if tweet in pos_tweets:
-            pos_tweets+=1
-
-        if tweet in neg_tweets:
-            neg_tweets+=1
-
-    pprint(pos_tweets, neg_tweets)
-    counts.append([('positive', pos_tweets), ('negative', neg_tweets)])
-
-    # Each element of tweets will be the text of a tweet.
-    # You need to find the count of all the positive and negative words in these tweets.
-    # Keep track of a running total counts and print this at every time step (use the pprint function).
-    # YOUR CODE HERE
-
-    # Let the counts varable hold the word counts for all time steps
-    # You will need to use the foreachRDD function.
-    # For our implementation, counts looked like:
-    #   [[("positive", 100), ("negative", 50)], [("positive", 80), ("negative", 60)], ...]
-    YOURDSTREAMOBJECT.foreachRDD(lambda t,rdd: counts.append(rdd.collect()))
-
-    ssc.awaitTerminationOrTimeout(duration)
-    ssc.stop(stopGraceFully=True)
-
-    return counts
 
 def stream(ssc, pwords, nwords, duration):
     kstream = KafkaUtils.createDirectStream(
     ssc, topics = ['twitterstream'], kafkaParams = {"metadata.broker.list": 'localhost:9092'})
     tweets = kstream.map(lambda x: x[1])
-    print("Hello this is bad ",  tweets)
+
+
     # Each element of tweets will be the text of a tweet.
-    # We keep track of a running total counts and print it at every time step.
+    # You need to find the count of all the positive and negative words in these tweets.
+    # Keep track of a running total counts and print this at every time step (use the pprint function).
+
     words = tweets.flatMap(lambda line:line.split(" "))
     positive = words.map(lambda word: ('Positive', 1) if word in pwords else ('Positive', 0))
     negative = words.map(lambda word: ('Negative', 1) if word in nwords else ('Negative', 0))
-    allSentiments = positive.union(negative)
-    sentimentCounts = allSentiments.reduceByKey(lambda x,y: x+y)
-    sentimentCounts.pprint()
-    runningSentimentCounts = sentimentCounts.updateStateByKey(updateFunction)
-    runningSentimentCounts.pprint()
-    
-    # The counts variable hold the word counts for all time steps
+    cuml = positive.union(negative)
+    each_count = cuml.reduceByKey(lambda x,y: x+y)
+    each_count.pprint()
+    running_counts = each_count.updateStateByKey(getRunningCount)
+    running_counts.pprint()
     counts = []
-    sentimentCounts.foreachRDD(lambda t, rdd: counts.append(rdd.collect()))
-    
-    # Start the computation
+    each_count.foreachRDD(lambda t, rdd: counts.append(rdd.collect()))
     ssc.start() 
     ssc.awaitTerminationOrTimeout(duration)
     ssc.stop(stopGraceFully = True)
 
     return counts
+
+
 if __name__ == "__main__":
     main()
